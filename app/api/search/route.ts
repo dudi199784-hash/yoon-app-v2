@@ -47,9 +47,19 @@ function cleanEnglishExample(raw: string, word: string): string {
   if (!compact) return "";
 
   // Remove common exam prefixes like numbering/bullets before English content.
-  const stripped = compact
-    .replace(/^[\[\(]?[0-9]+[\]\)]?\s*/g, "")
-    .replace(/^[0-9①-⑳ㄱ-ㅎ가-힣\[\]\(\)\-–—:·\s]+(?=[A-Za-z])/u, "");
+  let stripped = compact;
+  // Repeatedly remove leading number/bullet/question-label tokens until English starts.
+  for (let i = 0; i < 5; i += 1) {
+    const next = stripped
+      .replace(
+        /^(?:\(?\d+\)?|[①-⑳]|\[[^\]]{1,8}\]|[ㄱ-ㅎ가-힣]{1,8}|[-–—:·•])\s*/u,
+        "",
+      )
+      .trim();
+    if (next === stripped) break;
+    stripped = next;
+  }
+  stripped = stripped.replace(/^[^A-Za-z]+(?=[A-Za-z])/u, "").trim();
 
   const candidates = stripped.match(/[A-Za-z][^.!?]*[.!?]/g) ?? [];
   if (candidates.length === 0) return stripped;
