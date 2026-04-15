@@ -161,11 +161,18 @@ export default function Home() {
               .hwpx/.txt 파일이 들어있는 ZIP을 올리면 서버에 코퍼스를 저장합니다.
             </p>
           </div>
+          <label
+            htmlFor="zip-upload"
+            className="inline-flex cursor-pointer items-center rounded-md border border-zinc-600 bg-zinc-800 px-3 py-1.5 text-sm text-zinc-100 hover:bg-zinc-700"
+          >
+            파일 선택
+          </label>
           <input
+            id="zip-upload"
             type="file"
             accept=".zip"
             onChange={(e) => setZipFile(e.target.files?.[0] ?? null)}
-            className="rounded-md border border-zinc-700 bg-zinc-950 px-2 py-2 text-sm text-zinc-200 file:mr-3 file:rounded-md file:border file:border-zinc-600 file:bg-zinc-800 file:px-3 file:py-1 file:text-zinc-100 hover:file:bg-zinc-700"
+            className="sr-only"
           />
           {zipFile && <p className="mt-2 text-sm text-emerald-700">선택됨: {zipFile.name}</p>}
           <div className="mt-3 flex items-center gap-3">
