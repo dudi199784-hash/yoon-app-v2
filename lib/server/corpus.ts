@@ -121,38 +121,10 @@ export function sentenceContainsWord(sentence: string, word: string): boolean {
   if (!raw) return false;
   if (/^[a-zA-Z][a-zA-Z'-]*$/.test(raw)) {
     const lower = raw.toLowerCase();
-    const escaped = lower.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    const irregularForms: Record<string, string[]> = {
-      run: ["ran"],
-      go: ["went", "gone"],
-      do: ["did", "done"],
-      be: ["am", "is", "are", "was", "were", "been", "being"],
-      have: ["has", "had"],
-    };
-
-    const variants = new Set<string>([
-      lower,
-      `${lower}s`,
-      `${lower}es`,
-      `${lower}ed`,
-      `${lower}ing`,
-      ...(irregularForms[lower] ?? []),
-    ]);
-
-    // Some words need orthographic variants (run -> running).
-    if (lower.length >= 3) {
-      variants.add(`${lower}${lower[lower.length - 1]}ing`);
-      variants.add(`${lower}${lower[lower.length - 1]}ed`);
-    }
-
-    if (lower.endsWith("e")) {
-      variants.add(`${lower.slice(0, -1)}ing`);
-    }
-
-    const pattern = Array.from(variants)
+    const pattern = buildEnglishVariants(lower)
       .map((v) => v.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
       .join("|");
-    const directMatch = new RegExp(`\\b(?:${escaped}|${pattern})\\b`, "i").test(sentence);
+    const directMatch = new RegExp(`\\b(?:${pattern})\\b`, "i").test(sentence);
     if (directMatch) return true;
 
     // Fallback: stem-based match to catch broader inflections
@@ -189,6 +161,7 @@ function buildEnglishVariants(raw: string): string[] {
     `${lower}es`,
     `${lower}ed`,
     `${lower}ing`,
+    `${lower}ly`,
     ...(irregularForms[lower] ?? []),
   ]);
 
@@ -198,6 +171,10 @@ function buildEnglishVariants(raw: string): string[] {
   }
   if (lower.endsWith("e")) {
     variants.add(`${lower.slice(0, -1)}ing`);
+  }
+  // tolerate common adverb typo: criticaly -> critically
+  if (lower.endsWith("aly")) {
+    variants.add(`${lower.slice(0, -1)}ly`);
   }
   return Array.from(variants);
 }
@@ -344,6 +321,7 @@ export async function findCorpusCandidates(word: string, limit = 300): Promise<C
     .from("corpus_entries")
     .select("source_file,sentence")
     .or(clause)
+    .order("id", { ascending: true })
     .limit(limit * 4);
 
   if (error || !data) {
