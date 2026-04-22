@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 
 type CorpusStatus = {
@@ -23,6 +24,13 @@ type SearchResult = {
   candidateCount: number;
 };
 
+type TemplateSummary = {
+  id: string;
+  title: string;
+  createdAt: string;
+  filledSlots: number;
+};
+
 export default function Home() {
   const [apiKey, setApiKey] = useState("");
   const [status, setStatus] = useState<CorpusStatus>({ exists: false });
@@ -33,10 +41,36 @@ export default function Home() {
   const [meaning, setMeaning] = useState("");
   const [error, setError] = useState("");
   const [result, setResult] = useState<SearchResult | null>(null);
+  const [templateTitle, setTemplateTitle] = useState("");
+  const [templates, setTemplates] = useState<TemplateSummary[]>([]);
+  const [templateQuery, setTemplateQuery] = useState("");
+  const [selectedTemplateId, setSelectedTemplateId] = useState("");
+  const [creatingTemplate, setCreatingTemplate] = useState(false);
+  const [addingToTemplate, setAddingToTemplate] = useState(false);
 
   useEffect(() => {
     void refreshCorpusStatus();
   }, []);
+
+  useEffect(() => {
+    void (async () => {
+      try {
+        const url = templateQuery.trim()
+          ? `/api/templates?q=${encodeURIComponent(templateQuery.trim())}`
+          : "/api/templates";
+        const res = await fetch(url);
+        const json = await res.json();
+        if (!res.ok) throw new Error(typeof json.error === "string" ? json.error : "템플릿 조회 실패");
+        const list = (json.templates as TemplateSummary[]) ?? [];
+        setTemplates(list);
+        if (!selectedTemplateId && list.length > 0) {
+          setSelectedTemplateId(list[0].id);
+        }
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "템플릿 조회 실패");
+      }
+    })();
+  }, [templateQuery, selectedTemplateId]);
 
   async function refreshCorpusStatus() {
     try {
@@ -51,6 +85,73 @@ export default function Home() {
 
   async function copyText(value: string) {
     await navigator.clipboard.writeText(value);
+  }
+
+  async function refreshTemplates() {
+    const url = templateQuery.trim()
+      ? `/api/templates?q=${encodeURIComponent(templateQuery.trim())}`
+      : "/api/templates";
+    const res = await fetch(url);
+    const json = await res.json();
+    if (!res.ok) throw new Error(typeof json.error === "string" ? json.error : "템플릿 조회 실패");
+    const list = (json.templates as TemplateSummary[]) ?? [];
+    setTemplates(list);
+    if (!selectedTemplateId && list.length > 0) {
+      setSelectedTemplateId(list[0].id);
+    }
+  }
+
+  async function handleCreateTemplate() {
+    setError("");
+    setCreatingTemplate(true);
+    try {
+      const res = await fetch("/api/templates", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title: templateTitle.trim() }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(typeof json.error === "string" ? json.error : "템플릿 생성 실패");
+      setTemplateTitle("");
+      setSelectedTemplateId(json.id as string);
+      await refreshTemplates();
+      window.open(`/template/${json.id as string}`, "_blank");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "템플릿 생성 실패");
+    } finally {
+      setCreatingTemplate(false);
+    }
+  }
+
+  async function handleAddToTemplate() {
+    setError("");
+    if (!result) return;
+    if (!selectedTemplateId) {
+      setError("먼저 템플릿을 생성하거나 선택해 주세요.");
+      return;
+    }
+    setAddingToTemplate(true);
+    try {
+      const res = await fetch(`/api/templates/${selectedTemplateId}/add-word`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          word: result.word,
+          meanings: result.meanings.map((item) => ({
+            meaning: item.meaning,
+            english: item.example.english,
+            korean: item.example.korean,
+          })),
+        }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(typeof json.error === "string" ? json.error : "단어장 추가 실패");
+      await refreshTemplates();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "단어장 추가 실패");
+    } finally {
+      setAddingToTemplate(false);
+    }
   }
 
   function buildCopyAllText(data: SearchResult): string {
@@ -201,6 +302,73 @@ export default function Home() {
         </section>
 
         <section className="rounded-xl border border-zinc-700 bg-zinc-900 p-4 shadow-sm">
+          <h2 className="text-lg font-semibold">템플릿</h2>
+          <p className="mb-3 text-sm text-zinc-300">
+            템플릿 생성 후 검색 결과를 단어장에 추가할 수 있습니다. (템플릿당 최대 4단어)
+          </p>
+          <div className="grid gap-2 md:grid-cols-12">
+            <input
+              value={templateTitle}
+              onChange={(e) => setTemplateTitle(e.target.value)}
+              placeholder="템플릿 제목 (선택)"
+              className="rounded-md border border-zinc-600 bg-zinc-950 px-3 py-2 text-sm text-zinc-100 placeholder:text-zinc-500 md:col-span-6"
+            />
+            <button
+              type="button"
+              onClick={() => void handleCreateTemplate()}
+              disabled={creatingTemplate}
+              className="rounded-md border border-zinc-600 bg-zinc-800 px-3 py-2 text-sm text-zinc-100 hover:bg-zinc-700 disabled:opacity-60 md:col-span-3"
+            >
+              {creatingTemplate ? "생성 중..." : "템플릿에 추가하기"}
+            </button>
+            <input
+              value={templateQuery}
+              onChange={(e) => setTemplateQuery(e.target.value)}
+              placeholder="제목 검색"
+              className="rounded-md border border-zinc-600 bg-zinc-950 px-3 py-2 text-sm text-zinc-100 placeholder:text-zinc-500 md:col-span-2"
+            />
+            <button
+              type="button"
+              onClick={() => void refreshTemplates()}
+              className="rounded-md border border-zinc-600 bg-zinc-800 px-3 py-2 text-sm text-zinc-100 hover:bg-zinc-700 md:col-span-1"
+            >
+              조회
+            </button>
+          </div>
+          <div className="mt-3 space-y-2">
+            {templates.map((template) => (
+              <div
+                key={template.id}
+                className={`flex items-center justify-between rounded-md border p-2 ${
+                  selectedTemplateId === template.id
+                    ? "border-indigo-500 bg-zinc-800"
+                    : "border-zinc-700 bg-zinc-900"
+                }`}
+              >
+                <button
+                  type="button"
+                  onClick={() => setSelectedTemplateId(template.id)}
+                  className="text-left text-sm"
+                >
+                  {template.title} / {new Date(template.createdAt).toLocaleDateString()} /{" "}
+                  {template.filledSlots}/4
+                </button>
+                <Link
+                  className="rounded-md border border-zinc-600 bg-zinc-800 px-2 py-1 text-xs hover:bg-zinc-700"
+                  href={`/template/${template.id}`}
+                  target="_blank"
+                >
+                  열기
+                </Link>
+              </div>
+            ))}
+            {templates.length === 0 && (
+              <p className="text-sm text-zinc-400">템플릿이 없습니다. 먼저 생성해 주세요.</p>
+            )}
+          </div>
+        </section>
+
+        <section className="rounded-xl border border-zinc-700 bg-zinc-900 p-4 shadow-sm">
           <h2 className="text-lg font-semibold">단어 검색</h2>
           <p className="mb-3 text-sm text-zinc-300">
             뜻을 비워두면 AI가 의미를 자동 분류하고, 의미당 예문 1개씩 반환합니다.
@@ -243,6 +411,14 @@ export default function Home() {
                 className="rounded-md border border-zinc-600 bg-zinc-800 px-3 py-1 text-sm text-zinc-100 hover:bg-zinc-700"
               >
                 전체 복사
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleAddToTemplate()}
+                disabled={addingToTemplate}
+                className="rounded-md border border-zinc-600 bg-zinc-800 px-3 py-1 text-sm text-zinc-100 hover:bg-zinc-700 disabled:opacity-60"
+              >
+                {addingToTemplate ? "추가 중..." : "단어장에 추가하기"}
               </button>
             </div>
 
